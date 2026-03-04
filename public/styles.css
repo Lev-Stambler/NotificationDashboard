@@ -1,0 +1,273 @@
+:root {
+  --bg-0: #080f1c;
+  --bg-1: #0f2037;
+  --panel: rgba(10, 24, 42, 0.78);
+  --text-main: #edf7ff;
+  --text-dim: #9eb7cb;
+  --line: rgba(117, 173, 214, 0.25);
+  --working: #26d97a;
+  --waiting: #ffb347;
+  --idling: #5fb4ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(44, 117, 183, 0.32), transparent 36%),
+    radial-gradient(circle at 78% 0%, rgba(62, 164, 106, 0.21), transparent 30%),
+    linear-gradient(180deg, var(--bg-1), var(--bg-0));
+  color: var(--text-main);
+  font-family: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+.dashboard-shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.4rem;
+}
+
+.hero {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  backdrop-filter: blur(8px);
+  border-radius: 16px;
+  padding: 1rem 1.2rem;
+  animation: rise 0.4s ease-out;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 2.6vw, 2.5rem);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hero p {
+  margin: 0.35rem 0 0;
+  color: var(--text-dim);
+}
+
+.connection-pill {
+  margin-top: 0.7rem;
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.28rem 0.65rem;
+  font-size: 0.88rem;
+}
+
+.summary-grid {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.summary-grid article {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  padding: 0.75rem 1rem;
+}
+
+.summary-grid h2 {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.summary-grid p {
+  margin: 0.25rem 0 0;
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.cards-grid {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+}
+
+.agent-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(8, 22, 40, 0.83);
+  padding: 0.95rem;
+  animation: rise 0.38s ease-out;
+}
+
+.agent-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.status-light {
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  box-shadow: 0 0 12px currentColor;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+
+.status-working .status-light {
+  color: var(--working);
+}
+
+.status-waiting .status-light {
+  color: var(--waiting);
+}
+
+.status-idling .status-light {
+  color: var(--idling);
+}
+
+.agent-head h3 {
+  margin: 0;
+  font-size: 1.04rem;
+}
+
+.agent-head p {
+  margin: 0.15rem 0 0;
+  color: var(--text-dim);
+  font-size: 0.84rem;
+  word-break: break-word;
+}
+
+.badges {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.22rem 0.55rem;
+  font-size: 0.79rem;
+}
+
+.badge.status-working {
+  border-color: rgba(38, 217, 122, 0.45);
+}
+
+.badge.status-waiting {
+  border-color: rgba(255, 179, 71, 0.45);
+}
+
+.badge.status-idling {
+  border-color: rgba(95, 180, 255, 0.45);
+}
+
+.meta {
+  margin: 0.9rem 0 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.meta dt {
+  color: var(--text-dim);
+  font-size: 0.73rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.meta dd {
+  margin: 0.12rem 0 0;
+  font-size: 0.9rem;
+}
+
+.rename-button {
+  margin-top: 0.85rem;
+  width: 100%;
+  border: 1px solid rgba(95, 180, 255, 0.46);
+  background: rgba(95, 180, 255, 0.12);
+  color: var(--text-main);
+  border-radius: 10px;
+  padding: 0.42rem 0.6rem;
+  cursor: pointer;
+}
+
+.rename-button:hover {
+  background: rgba(95, 180, 255, 0.18);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(1, 7, 14, 0.7);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.modal {
+  width: min(450px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(8, 22, 40, 0.95);
+  padding: 1rem;
+}
+
+.modal h2 {
+  margin: 0;
+}
+
+.modal p {
+  color: var(--text-dim);
+}
+
+.modal input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(15, 35, 58, 0.6);
+  color: var(--text-main);
+  padding: 0.55rem 0.65rem;
+}
+
+.modal-actions {
+  margin-top: 0.7rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.modal-actions button {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(95, 180, 255, 0.15);
+  color: var(--text-main);
+  padding: 0.4rem 0.65rem;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 700px) {
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+}

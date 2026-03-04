@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "jsx": "react-jsx",
+    "allowJs": false,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "types": ["bun-types"],
+    "lib": ["ESNext", "DOM"],
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["src", "tests", "scripts/update-hook-config.ts"]
+}
