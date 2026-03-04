@@ -120,4 +120,53 @@ describe("DashboardState", () => {
     expect(tickResult.updated[0]?.status).toBe("idling");
     expect(tickResult.updated[0]?.lastActivityAt).toBe(5_000);
   });
+
+  test("keeps tool-wait notifications as working while pid is alive", () => {
+    const state = new DashboardState({}, []);
+    const start = 20_000;
+
+    const session = state.applyHook(
+      {
+        source: "claude",
+        hook_event_name: "Notification",
+        session_id: "s-tool-wait-live",
+        cwd: "/tmp/tool-wait-live",
+        message: "Waiting on a response from a tool",
+        claude_pid: process.pid
+      },
+      start
+    );
+
+    expect(session?.status).toBe("working");
+    expect(session?.lastEvent).toBe("notification_tool_wait");
+
+    const tickResult = state.tick(start + SETTINGS.workingToIdleMs + 10);
+    expect(tickResult.updated).toHaveLength(0);
+
+    const visible = state.visibleSessions(start + SETTINGS.workingToIdleMs + 10);
+    expect(visible[0]?.status).toBe("working");
+    expect(visible[0]?.lastEvent).toBe("notification_tool_wait");
+  });
+
+  test("idles tool-wait notifications when pid is dead", () => {
+    const state = new DashboardState({}, []);
+    const start = 30_000;
+
+    state.applyHook(
+      {
+        source: "claude",
+        hook_event_name: "Notification",
+        session_id: "s-tool-wait-dead",
+        cwd: "/tmp/tool-wait-dead",
+        message: "Waiting on a response from a tool",
+        claude_pid: 999_999
+      },
+      start
+    );
+
+    const tickResult = state.tick(start + 100);
+    expect(tickResult.updated).toHaveLength(1);
+    expect(tickResult.updated[0]?.status).toBe("idling");
+    expect(tickResult.updated[0]?.lastEvent).toBe("pid_dead");
+  });
 });

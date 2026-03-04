@@ -4,6 +4,7 @@ import {
   defaultNameFromPath,
   detectSource,
   eventToStatus,
+  isToolWaitNotification,
   normalizePath,
   resolveSessionId
 } from "./status-mapper";
@@ -168,9 +169,12 @@ export class DashboardState {
       base.pid = payload.claude_pid;
     }
 
-    const mapped = eventToStatus(source, hookEventName, now, base.status);
+    const mapped = eventToStatus(source, hookEventName, now, base.status, payload);
     base.status = mapped.status;
-    base.lastEvent = hookEventName;
+    base.lastEvent =
+      source === "claude" && hookEventName === "Notification" && isToolWaitNotification(payload)
+        ? "notification_tool_wait"
+        : hookEventName;
     base.lastActivityAt = now;
 
     if (mapped.endedAt !== null) {
@@ -332,9 +336,11 @@ export class DashboardState {
         }
       }
 
-      if (session.pid && session.source === "codex") {
+      let pidAlive = false;
+      if (session.pid) {
         try {
           process.kill(session.pid, 0);
+          pidAlive = true;
         } catch {
           session.pid = null;
           session.endedAt = session.endedAt ?? now;
@@ -353,7 +359,10 @@ export class DashboardState {
         dirty = true;
       }
 
-      if (session.status === "working" && elapsed > SETTINGS.workingToIdleMs) {
+      const skipWorkingTimeout =
+        session.source === "claude" && session.lastEvent === "notification_tool_wait" && pidAlive;
+
+      if (session.status === "working" && elapsed > SETTINGS.workingToIdleMs && !skipWorkingTimeout) {
         session.status = "idling";
         session.lastEvent = "working_timeout";
         dirty = true;

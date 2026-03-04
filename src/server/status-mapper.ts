@@ -1,5 +1,13 @@
 import type { AgentSource, AgentStatus, HookPayload } from "./types";
 
+const TOOL_WAIT_NOTIFICATION_PATTERN = /waiting on a response from a tool/i;
+
+export const isToolWaitNotification = (payload: HookPayload): boolean => {
+  const message = typeof payload.message === "string" ? payload.message : "";
+  const title = typeof payload.title === "string" ? payload.title : "";
+  return TOOL_WAIT_NOTIFICATION_PATTERN.test(message) || TOOL_WAIT_NOTIFICATION_PATTERN.test(title);
+};
+
 export const normalizePath = (value: string): string => {
   const trimmed = value.trim();
   if (!trimmed) return "unknown";
@@ -39,7 +47,8 @@ export const eventToStatus = (
   source: AgentSource,
   hookEventName: string,
   now: number,
-  currentStatus: AgentStatus
+  currentStatus: AgentStatus,
+  payload?: HookPayload
 ): { status: AgentStatus; endedAt: number | null } => {
   if (source === "codex") {
     if (hookEventName === "agent-turn-complete" || hookEventName === "Stop") {
@@ -68,7 +77,11 @@ export const eventToStatus = (
       return { status: "working", endedAt: null };
     case "PermissionRequest":
     case "Stop":
+      return { status: "waiting", endedAt: null };
     case "Notification":
+      if (payload && isToolWaitNotification(payload)) {
+        return { status: "working", endedAt: null };
+      }
       return { status: "waiting", endedAt: null };
     case "SessionEnd":
       return { status: "idling", endedAt: now };

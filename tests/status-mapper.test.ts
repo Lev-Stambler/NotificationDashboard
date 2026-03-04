@@ -25,6 +25,16 @@ describe("status-mapper", () => {
   test("maps status transitions", () => {
     expect(eventToStatus("claude", "PreToolUse", Date.now(), "idling").status).toBe("working");
     expect(eventToStatus("claude", "PermissionRequest", Date.now(), "working").status).toBe("waiting");
+    expect(
+      eventToStatus("claude", "Notification", Date.now(), "working", {
+        message: "Waiting on a response from a tool"
+      }).status
+    ).toBe("working");
+    expect(
+      eventToStatus("claude", "Notification", Date.now(), "working", {
+        message: "Claude needs permission"
+      }).status
+    ).toBe("waiting");
     expect(eventToStatus("claude", "SessionEnd", Date.now(), "working").endedAt).not.toBeNull();
     expect(eventToStatus("codex", "agent-turn-complete", Date.now(), "working").status).toBe("waiting");
     expect(eventToStatus("opencode", "assistant_in_progress", Date.now(), "idling").status).toBe("working");
