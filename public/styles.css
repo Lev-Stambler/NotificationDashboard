@@ -206,6 +206,82 @@ body {
   background: rgba(95, 180, 255, 0.18);
 }
 
+.card-actions {
+  margin-top: 0.85rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.card-actions .rename-button {
+  margin-top: 0;
+}
+
+.hide-button {
+  width: 100%;
+  border: 1px solid rgba(255, 179, 71, 0.52);
+  background: rgba(255, 179, 71, 0.12);
+  color: var(--text-main);
+  border-radius: 10px;
+  padding: 0.42rem 0.6rem;
+  cursor: pointer;
+}
+
+.hide-button:hover {
+  background: rgba(255, 179, 71, 0.2);
+}
+
+.hidden-section {
+  margin-top: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  padding: 0.9rem;
+}
+
+.hidden-section h2 {
+  margin: 0 0 0.6rem;
+  font-size: 0.95rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.hidden-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.hidden-item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.6rem 0.7rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.7rem;
+  background: rgba(8, 22, 40, 0.6);
+}
+
+.hidden-item h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.hidden-item p {
+  margin: 0.2rem 0 0;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+
+.hidden-item button {
+  border: 1px solid rgba(95, 180, 255, 0.46);
+  background: rgba(95, 180, 255, 0.12);
+  color: var(--text-main);
+  border-radius: 9px;
+  padding: 0.35rem 0.6rem;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;

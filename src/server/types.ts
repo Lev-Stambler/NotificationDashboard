@@ -21,6 +21,7 @@ export interface AgentSession {
   projectPath: string;
   defaultName: string;
   customName: string | null;
+  hidden: boolean;
   status: AgentStatus;
   lastEvent: string;
   lastActivityAt: number;
@@ -31,6 +32,7 @@ export interface AgentSession {
 
 export interface DashboardSnapshot {
   sessions: AgentSession[];
+  hiddenSessions: AgentSession[];
   generatedAt: number;
 }
 
@@ -39,6 +41,7 @@ export interface DashboardSettings {
   queueFile: string;
   configDir: string;
   recentTtlMinutes: number;
+  staleDays: number;
   waitingToIdleMs: number;
   workingToIdleMs: number;
 }

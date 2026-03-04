@@ -6,6 +6,7 @@ A self-contained Bun dashboard for local Claude + Codex + OpenCode session statu
 - `Working`
 - `Waiting for answer`
 - `Idling`
+- Hide/unhide windows (auto-unhide on fresh activity)
 
 Default agent name is the workspace folder name. Names can be renamed in the UI and are persisted in host config.
 
@@ -44,11 +45,13 @@ bash scripts/setup-hooks.sh --dry-run --verbose
 By default:
 - Names: `~/.config/agent-notify-dashboard/names.json`
 - Recent cache: `~/.config/agent-notify-dashboard/state-cache.json`
+- Hidden windows: `~/.config/agent-notify-dashboard/hidden.json`
 
 Override with env:
 - `DASH_CONFIG_DIR`
 - `DASH_QUEUE_FILE`
 - `DASH_RECENT_TTL_MINUTES`
+- `DASH_STALE_DAYS`
 
 ## Development scripts
 ```bash

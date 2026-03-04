@@ -37,6 +37,28 @@ export const saveNames = async (filePath: string, names: Record<string, string>)
   await atomicWrite(filePath, `${JSON.stringify(names, null, 2)}\n`);
 };
 
+export const loadHidden = async (filePath: string): Promise<Record<string, boolean>> => {
+  try {
+    const raw = await readFile(filePath, "utf8");
+    const parsed = safeParse<Record<string, boolean>>(raw, {});
+    if (!parsed || typeof parsed !== "object") return {};
+
+    const next: Record<string, boolean> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (value === true) {
+        next[key] = true;
+      }
+    }
+    return next;
+  } catch {
+    return {};
+  }
+};
+
+export const saveHidden = async (filePath: string, hidden: Record<string, boolean>): Promise<void> => {
+  await atomicWrite(filePath, `${JSON.stringify(hidden, null, 2)}\n`);
+};
+
 export const loadRecent = async (filePath: string): Promise<AgentSession[]> => {
   try {
     const raw = await readFile(filePath, "utf8");

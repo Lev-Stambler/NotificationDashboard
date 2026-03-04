@@ -29,9 +29,12 @@ export default function App() {
 
     const fetchInitial = async () => {
       const response = await fetch("/api/sessions");
-      const payload = (await response.json()) as { sessions: AgentSession[] };
+      const payload = (await response.json()) as {
+        sessions: AgentSession[];
+        hiddenSessions: AgentSession[];
+      };
       if (!cancelled) {
-        setSessions(payload.sessions);
+        setSessions([...payload.sessions, ...payload.hiddenSessions]);
       }
     };
 
@@ -46,7 +49,7 @@ export default function App() {
     socket.onmessage = (event) => {
       const message = JSON.parse(event.data) as WsMessage;
       if (message.type === "snapshot") {
-        setSessions(message.payload.sessions);
+        setSessions([...message.payload.sessions, ...message.payload.hiddenSessions]);
         return;
       }
       if (message.type === "session_upsert") {
@@ -64,7 +67,9 @@ export default function App() {
     };
   }, []);
 
-  const counts = useMemo(() => countByStatus(sessions), [sessions]);
+  const visibleSessions = useMemo(() => sessions.filter((session) => !session.hidden), [sessions]);
+  const hiddenSessions = useMemo(() => sessions.filter((session) => session.hidden), [sessions]);
+  const counts = useMemo(() => countByStatus(visibleSessions), [visibleSessions]);
 
   const saveName = async (session: AgentSession, name: string | null): Promise<void> => {
     const response = await fetch(`/api/agents/${encodeURIComponent(session.agentKey)}/name`, {
@@ -75,6 +80,21 @@ export default function App() {
 
     if (!response.ok) {
       throw new Error("Failed to save name");
+    }
+
+    const payload = (await response.json()) as { session: AgentSession };
+    setSessions((previous) => mergeSession(previous, payload.session));
+  };
+
+  const setHidden = async (session: AgentSession, hidden: boolean): Promise<void> => {
+    const response = await fetch(`/api/agents/${encodeURIComponent(session.agentKey)}/hidden`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hidden })
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to update hidden state");
     }
 
     const payload = (await response.json()) as { session: AgentSession };
@@ -105,10 +125,44 @@ export default function App() {
       </section>
 
       <section className="cards-grid">
-        {sessions.map((session) => (
-          <AgentCard key={session.agentKey} session={session} onRename={setSelected} />
+        {visibleSessions.map((session) => (
+          <AgentCard
+            key={session.agentKey}
+            session={session}
+            onRename={setSelected}
+            onHide={(target) => {
+              void setHidden(target, true);
+            }}
+          />
         ))}
       </section>
+
+      {hiddenSessions.length > 0 ? (
+        <section className="hidden-section">
+          <h2>Hidden windows</h2>
+          <div className="hidden-list">
+            {hiddenSessions.map((session) => {
+              const label = session.customName || session.defaultName;
+              return (
+                <article key={session.agentKey} className="hidden-item">
+                  <div>
+                    <h3>{label}</h3>
+                    <p>{session.projectPath}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void setHidden(session, false);
+                    }}
+                  >
+                    Unhide
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       <RenameModal session={selected} onClose={() => setSelected(null)} onSave={saveName} />
     </main>

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { SETTINGS } from "../src/server/config";
 import { DashboardState } from "../src/server/state";
 
 describe("DashboardState", () => {
@@ -51,5 +52,72 @@ describe("DashboardState", () => {
     expect(session?.sessionId).toBe("oc-1");
     expect(session?.status).toBe("waiting");
     expect(session?.lastEvent).toBe("assistant_complete");
+  });
+
+  test("supports hiding and auto-unhides on new activity", () => {
+    const state = new DashboardState({}, []);
+    const session = state.applyHook(
+      {
+        source: "claude",
+        hook_event_name: "SessionStart",
+        session_id: "s-hide",
+        cwd: "/tmp/hide-project"
+      },
+      1_000
+    );
+
+    expect(session).not.toBeNull();
+    const hidden = state.hide(session!.agentKey);
+    expect(hidden?.hidden).toBe(true);
+    expect(state.visibleSessions(1_000)).toHaveLength(0);
+    expect(state.hiddenSessions(1_000)).toHaveLength(1);
+
+    const revived = state.applyHook(
+      {
+        source: "claude",
+        hook_event_name: "PreToolUse",
+        session_id: "s-hide",
+        cwd: "/tmp/hide-project"
+      },
+      2_000
+    );
+
+    expect(revived?.hidden).toBe(false);
+    expect(state.visibleSessions(2_000)).toHaveLength(1);
+    expect(state.hiddenSessions(2_000)).toHaveLength(0);
+  });
+
+  test("filters stale sessions older than two days", () => {
+    const state = new DashboardState({}, []);
+    state.applyOpenCodeActivity({
+      sessionId: "stale-1",
+      cwd: "/tmp/stale-project",
+      status: "waiting",
+      lastEvent: "assistant_complete",
+      updatedAtMs: 1_000
+    });
+
+    const threeDaysLater = 1_000 + 3 * 24 * 60 * 60 * 1_000;
+    expect(state.visibleSessions(threeDaysLater)).toHaveLength(0);
+  });
+
+  test("timeout transitions do not refresh last activity timestamp", () => {
+    const state = new DashboardState({}, []);
+    const session = state.applyHook(
+      {
+        source: "claude",
+        hook_event_name: "PreToolUse",
+        session_id: "s-timeout",
+        cwd: "/tmp/timeout-project"
+      },
+      5_000
+    );
+
+    expect(session?.status).toBe("working");
+
+    const tickResult = state.tick(5_000 + SETTINGS.workingToIdleMs + 10);
+    expect(tickResult.updated).toHaveLength(1);
+    expect(tickResult.updated[0]?.status).toBe("idling");
+    expect(tickResult.updated[0]?.lastActivityAt).toBe(5_000);
   });
 });

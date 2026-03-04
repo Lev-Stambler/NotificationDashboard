@@ -8,6 +8,7 @@ export interface AgentSession {
   projectPath: string;
   defaultName: string;
   customName: string | null;
+  hidden: boolean;
   status: AgentStatus;
   lastEvent: string;
   lastActivityAt: number;
@@ -20,6 +21,7 @@ export interface WsMessageSnapshot {
   type: "snapshot";
   payload: {
     sessions: AgentSession[];
+    hiddenSessions: AgentSession[];
     generatedAt: number;
   };
 }

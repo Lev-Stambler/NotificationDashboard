@@ -24,9 +24,10 @@ const relativeTime = (timestamp: number): string => {
 interface Props {
   session: AgentSession;
   onRename: (session: AgentSession) => void;
+  onHide: (session: AgentSession) => void;
 }
 
-export function AgentCard({ session, onRename }: Props) {
+export function AgentCard({ session, onRename, onHide }: Props) {
   const displayName = session.customName || session.defaultName;
 
   return (
@@ -55,9 +56,14 @@ export function AgentCard({ session, onRename }: Props) {
         </div>
       </dl>
 
-      <button type="button" className="rename-button" onClick={() => onRename(session)}>
-        Rename
-      </button>
+      <div className="card-actions">
+        <button type="button" className="rename-button" onClick={() => onRename(session)}>
+          Rename
+        </button>
+        <button type="button" className="hide-button" onClick={() => onHide(session)}>
+          Hide
+        </button>
+      </div>
     </article>
   );
 }

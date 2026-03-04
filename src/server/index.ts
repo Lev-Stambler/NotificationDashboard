@@ -6,11 +6,12 @@ import {
   CACHE_FILE,
   CODEX_HISTORY_FILE,
   CODEX_STATE_DB_FILE,
+  HIDDEN_FILE,
   NAMES_FILE,
   OPENCODE_DB_FILE,
   SETTINGS
 } from "./config";
-import { loadNames, loadRecent, saveNames, saveRecent } from "./persistence";
+import { loadHidden, loadNames, loadRecent, saveHidden, saveNames, saveRecent } from "./persistence";
 import { DashboardState } from "./state";
 import type { AgentStatus, CodexHistoryEntry, HookPayload, WsMessage } from "./types";
 
@@ -18,7 +19,8 @@ const app = new Hono();
 
 const names = await loadNames(NAMES_FILE);
 const recent = await loadRecent(CACHE_FILE);
-const stateStore = new DashboardState(names, recent);
+const hidden = await loadHidden(HIDDEN_FILE);
+const stateStore = new DashboardState(names, recent, hidden);
 
 const sockets = new Set<Bun.ServerWebSocket<unknown>>();
 
@@ -39,6 +41,7 @@ const upsertSession = (payload: HookPayload, now?: number): void => {
 const persistAll = async (): Promise<void> => {
   await saveNames(NAMES_FILE, stateStore.namesRecord());
   await saveRecent(CACHE_FILE, stateStore.recentSessions());
+  await saveHidden(HIDDEN_FILE, stateStore.hiddenRecord());
 };
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -422,7 +425,10 @@ const serveFile = async (path: string): Promise<Response> => {
 };
 
 app.get("/api/sessions", (c) => {
-  return c.json({ sessions: stateStore.visibleSessions() });
+  return c.json({
+    sessions: stateStore.visibleSessions(),
+    hiddenSessions: stateStore.hiddenSessions()
+  });
 });
 
 app.get("/api/settings", (c) => {
@@ -433,6 +439,18 @@ app.patch("/api/agents/:agentKey/name", async (c) => {
   const agentKey = c.req.param("agentKey");
   const body = await c.req.json<{ name?: string | null }>();
   const updated = stateStore.rename(agentKey, body.name ?? null);
+  if (!updated) return c.json({ error: "Agent not found" }, 404);
+
+  send({ type: "session_upsert", payload: updated });
+  queuePersist();
+  return c.json({ session: updated });
+});
+
+app.patch("/api/agents/:agentKey/hidden", async (c) => {
+  const agentKey = c.req.param("agentKey");
+  const body = await c.req.json<{ hidden?: boolean }>();
+  const shouldHide = body.hidden === true;
+  const updated = shouldHide ? stateStore.hide(agentKey) : stateStore.unhide(agentKey);
   if (!updated) return c.json({ error: "Agent not found" }, 404);
 
   send({ type: "session_upsert", payload: updated });
@@ -518,6 +536,7 @@ const server = Bun.serve({
           type: "snapshot",
           payload: {
             sessions: stateStore.visibleSessions(),
+            hiddenSessions: stateStore.hiddenSessions(),
             generatedAt: Date.now()
           }
         } satisfies WsMessage)
