@@ -1,0 +1,8 @@
+{
+  "source": "claude",
+  "hook_event_name": "Notification",
+  "session_id": "fixture-background",
+  "cwd": "/tmp/fixture-background",
+  "message": "Claude is running in the background",
+  "title": "Background task"
+}

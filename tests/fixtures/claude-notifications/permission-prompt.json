@@ -1,0 +1,9 @@
+{
+  "source": "claude",
+  "hook_event_name": "Notification",
+  "session_id": "fixture-permission",
+  "cwd": "/tmp/fixture-permission",
+  "notification_type": "permission_prompt",
+  "message": "Claude Code needs your approval for the plan",
+  "title": "Approval needed"
+}

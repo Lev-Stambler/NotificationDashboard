@@ -121,7 +121,55 @@ describe("DashboardState", () => {
     expect(tickResult.updated[0]?.lastActivityAt).toBe(5_000);
   });
 
-  test("keeps tool-wait notifications as working while pid is alive", () => {
+  test("uses hook timestamp when provided", () => {
+    const state = new DashboardState({}, []);
+    const receivedAt = 15_000;
+
+    const session = state.applyHook(
+      {
+        source: "claude",
+        hook_event_name: "PreToolUse",
+        session_id: "s-hook-time",
+        cwd: "/tmp/hook-time-project",
+        hook_sent_at: 10_000
+      },
+      receivedAt
+    );
+
+    expect(session?.lastActivityAt).toBe(10_000);
+  });
+
+  test("ignores stale hook timestamps for status regression", () => {
+    const state = new DashboardState({}, []);
+
+    state.applyHook(
+      {
+        source: "claude",
+        hook_event_name: "PreToolUse",
+        session_id: "s-stale-hook",
+        cwd: "/tmp/stale-hook-project",
+        hook_sent_at: 20_000
+      },
+      20_000
+    );
+
+    const session = state.applyHook(
+      {
+        source: "claude",
+        hook_event_name: "Notification",
+        session_id: "s-stale-hook",
+        cwd: "/tmp/stale-hook-project",
+        notification_type: "idle_prompt",
+        hook_sent_at: 10_000
+      },
+      21_000
+    );
+
+    expect(session?.status).toBe("working");
+    expect(session?.lastActivityAt).toBe(20_000);
+  });
+
+  test("keeps background notifications active while pid is alive", () => {
     const state = new DashboardState({}, []);
     const start = 20_000;
 
@@ -137,18 +185,18 @@ describe("DashboardState", () => {
       start
     );
 
-    expect(session?.status).toBe("working");
-    expect(session?.lastEvent).toBe("notification_tool_wait");
+    expect(session?.status).toBe("background");
+    expect(session?.lastEvent).toBe("notification_background");
 
     const tickResult = state.tick(start + SETTINGS.workingToIdleMs + 10);
     expect(tickResult.updated).toHaveLength(0);
 
     const visible = state.visibleSessions(start + SETTINGS.workingToIdleMs + 10);
-    expect(visible[0]?.status).toBe("working");
-    expect(visible[0]?.lastEvent).toBe("notification_tool_wait");
+    expect(visible[0]?.status).toBe("background");
+    expect(visible[0]?.lastEvent).toBe("notification_background");
   });
 
-  test("idles tool-wait notifications when pid is dead", () => {
+  test("idles background notifications when pid is dead", () => {
     const state = new DashboardState({}, []);
     const start = 30_000;
 
@@ -168,5 +216,43 @@ describe("DashboardState", () => {
     expect(tickResult.updated).toHaveLength(1);
     expect(tickResult.updated[0]?.status).toBe("idling");
     expect(tickResult.updated[0]?.lastEvent).toBe("pid_dead");
+  });
+
+  test("treats permission prompt notifications as waiting", () => {
+    const state = new DashboardState({}, []);
+    const session = state.applyHook(
+      {
+        source: "claude",
+        hook_event_name: "Notification",
+        session_id: "s-permission-prompt",
+        cwd: "/tmp/permission-project",
+        notification_type: "permission_prompt",
+        message: "Claude Code needs your approval for the plan"
+      },
+      40_000
+    );
+
+    expect(session?.status).toBe("waiting");
+  });
+
+  test("records unhandled Claude notification types for debugging", () => {
+    const state = new DashboardState({}, []);
+
+    state.applyHook(
+      {
+        source: "claude",
+        hook_event_name: "Notification",
+        session_id: "s-unknown-notification",
+        cwd: "/tmp/unknown-notification-project",
+        notification_type: "background_run_started",
+        message: "Background worker started"
+      },
+      50_000
+    );
+
+    const entries = state.unknownNotifications();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.notificationType).toBe("background_run_started");
+    expect(entries[0]?.classification).toBe("informational");
   });
 });

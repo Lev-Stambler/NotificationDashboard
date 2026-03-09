@@ -7,7 +7,14 @@ export const CLAUDE_EVENTS = [
   "PostToolUse",
   "PostToolUseFailure",
   "PermissionRequest",
+  "SubagentStart",
+  "SubagentStop",
   "Stop",
+  "TeammateIdle",
+  "TaskCompleted",
+  "InstructionsLoaded",
+  "ConfigChange",
+  "PreCompact",
   "Notification",
   "SessionEnd"
 ] as const;

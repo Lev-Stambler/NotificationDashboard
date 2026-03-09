@@ -1,15 +1,17 @@
 import { RECENT_TTL_MS, SETTINGS, STALE_SESSION_MS } from "./config";
 import {
   buildAgentKey,
+  classifyClaudeNotification,
   defaultNameFromPath,
   detectSource,
   eventToStatus,
-  isToolWaitNotification,
+  isHandledClaudeNotificationType,
   normalizePath,
   resolveSessionId
 } from "./status-mapper";
 import type {
   AgentSession,
+  ClaudeNotificationDebugEntry,
   AgentSource,
   AgentStatus,
   CodexHistoryEntry,
@@ -26,6 +28,7 @@ export class DashboardState {
   private readonly hidden: Set<string>;
   private readonly sessions: Map<string, AgentSession>;
   private readonly sessionToAgent: Map<string, string>;
+  private readonly unknownClaudeNotifications: ClaudeNotificationDebugEntry[];
 
   constructor(
     initialNames: Record<string, string>,
@@ -36,6 +39,7 @@ export class DashboardState {
     this.hidden = new Set(Object.entries(initialHidden).filter(([, value]) => value).map(([key]) => key));
     this.sessions = new Map();
     this.sessionToAgent = new Map();
+    this.unknownClaudeNotifications = [];
 
     for (const session of initialRecent) {
       const isHidden = this.hidden.has(session.agentKey) || session.hidden === true;
@@ -64,6 +68,42 @@ export class DashboardState {
 
   recentSessions(): AgentSession[] {
     return [...this.sessions.values()].filter((s) => s.endedAt !== null);
+  }
+
+  unknownNotifications(): ClaudeNotificationDebugEntry[] {
+    return [...this.unknownClaudeNotifications];
+  }
+
+  private recordUnknownClaudeNotification(input: {
+    observedAt: number;
+    sessionId: string | null;
+    agentKey: string;
+    payload: HookPayload;
+    classification: string;
+  }): void {
+    const entry: ClaudeNotificationDebugEntry = {
+      observedAt: input.observedAt,
+      sessionId: input.sessionId,
+      agentKey: input.agentKey,
+      notificationType: typeof input.payload.notification_type === "string" ? input.payload.notification_type : null,
+      message: typeof input.payload.message === "string" ? input.payload.message : null,
+      title: typeof input.payload.title === "string" ? input.payload.title : null,
+      classification: input.classification
+    };
+
+    const duplicate = this.unknownClaudeNotifications.some(
+      (existing) =>
+        existing.sessionId === entry.sessionId &&
+        existing.notificationType === entry.notificationType &&
+        existing.message === entry.message &&
+        existing.title === entry.title
+    );
+    if (duplicate) return;
+
+    this.unknownClaudeNotifications.unshift(entry);
+    if (this.unknownClaudeNotifications.length > 50) {
+      this.unknownClaudeNotifications.length = 50;
+    }
   }
 
   private isDisplayable(session: AgentSession, now: number): boolean {
@@ -169,13 +209,48 @@ export class DashboardState {
       base.pid = payload.claude_pid;
     }
 
-    const mapped = eventToStatus(source, hookEventName, now, base.status, payload);
+    const eventTimestamp =
+      typeof payload.hook_sent_at === "number" && Number.isFinite(payload.hook_sent_at) && payload.hook_sent_at > 0
+        ? Math.min(payload.hook_sent_at, now)
+        : now;
+
+    if (existing && eventTimestamp < existing.lastActivityAt) {
+      this.sessions.set(agentKey, base);
+      return { ...base };
+    }
+
+    if (source === "claude" && hookEventName === "Notification") {
+      const classification = classifyClaudeNotification(payload);
+      const hasUnhandledType =
+        typeof payload.notification_type === "string" && !isHandledClaudeNotificationType(payload);
+      if (classification === "unknown" || hasUnhandledType) {
+        this.recordUnknownClaudeNotification({
+          observedAt: now,
+          sessionId,
+          agentKey,
+          payload,
+          classification
+        });
+      }
+    }
+
+    const mapped = eventToStatus(source, hookEventName, eventTimestamp, base.status, payload);
     base.status = mapped.status;
-    base.lastEvent =
-      source === "claude" && hookEventName === "Notification" && isToolWaitNotification(payload)
-        ? "notification_tool_wait"
-        : hookEventName;
-    base.lastActivityAt = now;
+    if (source === "claude" && hookEventName === "Notification") {
+      const notificationKind = classifyClaudeNotification(payload);
+      if (notificationKind === "background_active") {
+        base.lastEvent = "notification_background";
+      } else if (notificationKind === "user_wait") {
+        base.lastEvent = "notification_user_wait";
+      } else if (notificationKind === "informational") {
+        base.lastEvent = "notification_info";
+      } else {
+        base.lastEvent = hookEventName;
+      }
+    } else {
+      base.lastEvent = hookEventName;
+    }
+    base.lastActivityAt = eventTimestamp;
 
     if (mapped.endedAt !== null) {
       base.endedAt = mapped.endedAt;
@@ -359,10 +434,16 @@ export class DashboardState {
         dirty = true;
       }
 
-      const skipWorkingTimeout =
-        session.source === "claude" && session.lastEvent === "notification_tool_wait" && pidAlive;
+      const skipBackgroundTimeout =
+        session.source === "claude" && session.status === "background" && pidAlive;
 
-      if (session.status === "working" && elapsed > SETTINGS.workingToIdleMs && !skipWorkingTimeout) {
+      if (session.status === "background" && elapsed > SETTINGS.workingToIdleMs && !skipBackgroundTimeout) {
+        session.status = "idling";
+        session.lastEvent = "background_timeout";
+        dirty = true;
+      }
+
+      if (session.status === "working" && elapsed > SETTINGS.workingToIdleMs) {
         session.status = "idling";
         session.lastEvent = "working_timeout";
         dirty = true;
@@ -380,6 +461,7 @@ export class DashboardState {
 
 export const statusLabel = (status: AgentStatus): string => {
   if (status === "working") return "Working";
+  if (status === "background") return "Background + Working";
   if (status === "waiting") return "Waiting for answer";
   return "Idling";
 };

@@ -144,12 +144,8 @@ let queueOffset = 0;
 let queueRemainder = "";
 
 const bootQueue = async (): Promise<void> => {
-  try {
-    const info = await stat(SETTINGS.queueFile);
-    queueOffset = info.size;
-  } catch {
-    queueOffset = 0;
-  }
+  queueOffset = 0;
+  queueRemainder = "";
 };
 
 const readQueue = async (): Promise<void> => {
@@ -469,6 +465,13 @@ app.get("/api/health", (c) => {
   return c.json({ ok: true, timestamp: Date.now() });
 });
 
+app.get("/api/debug/notifications", (c) => {
+  return c.json({
+    unknownClaudeNotifications: stateStore.unknownNotifications(),
+    generatedAt: Date.now()
+  });
+});
+
 app.get("/styles.css", async () => {
   return serveFile("public/styles.css");
 });
@@ -483,6 +486,7 @@ app.get("/", async () => {
 });
 
 await bootQueue();
+await readQueue();
 await bootHistory();
 await bootCodexThreads();
 await bootOpenCodeSessions();

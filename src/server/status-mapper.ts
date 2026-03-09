@@ -1,11 +1,61 @@
 import type { AgentSource, AgentStatus, HookPayload } from "./types";
 
 const TOOL_WAIT_NOTIFICATION_PATTERN = /waiting on a response from a tool/i;
+const BACKGROUND_NOTIFICATION_PATTERN = /running in the background|in the background/i;
+const IDLE_PROMPT_NOTIFICATION_PATTERN = /waiting for your input/i;
+const ATTENTION_NOTIFICATION_PATTERN = /needs your attention|needs your approval|needs permission/i;
 
-export const isToolWaitNotification = (payload: HookPayload): boolean => {
+export type ClaudeNotificationKind =
+  | "background_active"
+  | "user_wait"
+  | "informational"
+  | "unknown";
+
+export const HANDLED_CLAUDE_NOTIFICATION_TYPES = [
+  "idle_prompt",
+  "permission_prompt",
+  "elicitation_dialog",
+  "auth_success"
+] as const;
+
+const HANDLED_CLAUDE_NOTIFICATION_TYPE_SET = new Set<string>(HANDLED_CLAUDE_NOTIFICATION_TYPES);
+
+const normalizedNotificationType = (payload: HookPayload): string | null => {
+  return typeof payload.notification_type === "string" && payload.notification_type.length > 0
+    ? payload.notification_type
+    : null;
+};
+
+export const isHandledClaudeNotificationType = (payload: HookPayload): boolean => {
+  const notificationType = normalizedNotificationType(payload);
+  return notificationType !== null && HANDLED_CLAUDE_NOTIFICATION_TYPE_SET.has(notificationType);
+};
+
+export const classifyClaudeNotification = (payload: HookPayload): ClaudeNotificationKind => {
+  const notificationType = normalizedNotificationType(payload);
   const message = typeof payload.message === "string" ? payload.message : "";
   const title = typeof payload.title === "string" ? payload.title : "";
-  return TOOL_WAIT_NOTIFICATION_PATTERN.test(message) || TOOL_WAIT_NOTIFICATION_PATTERN.test(title);
+
+  if (notificationType === "idle_prompt") return "user_wait";
+  if (notificationType === "permission_prompt") return "user_wait";
+  if (notificationType === "elicitation_dialog") return "user_wait";
+
+  if (TOOL_WAIT_NOTIFICATION_PATTERN.test(message) || TOOL_WAIT_NOTIFICATION_PATTERN.test(title)) {
+    return "background_active";
+  }
+  if (BACKGROUND_NOTIFICATION_PATTERN.test(message) || BACKGROUND_NOTIFICATION_PATTERN.test(title)) {
+    return "background_active";
+  }
+  if (IDLE_PROMPT_NOTIFICATION_PATTERN.test(message) || IDLE_PROMPT_NOTIFICATION_PATTERN.test(title)) {
+    return "user_wait";
+  }
+  if (ATTENTION_NOTIFICATION_PATTERN.test(message) || ATTENTION_NOTIFICATION_PATTERN.test(title)) {
+    return "user_wait";
+  }
+
+  if (notificationType === "auth_success") return "informational";
+  if (notificationType !== null) return "informational";
+  return "unknown";
 };
 
 export const normalizePath = (value: string): string => {
@@ -79,10 +129,16 @@ export const eventToStatus = (
     case "Stop":
       return { status: "waiting", endedAt: null };
     case "Notification":
-      if (payload && isToolWaitNotification(payload)) {
-        return { status: "working", endedAt: null };
+      if (payload) {
+        const notificationKind = classifyClaudeNotification(payload);
+        if (notificationKind === "background_active") {
+          return { status: "background", endedAt: null };
+        }
+        if (notificationKind === "user_wait") {
+          return { status: "waiting", endedAt: null };
+        }
       }
-      return { status: "waiting", endedAt: null };
+      return { status: currentStatus, endedAt: null };
     case "SessionEnd":
       return { status: "idling", endedAt: now };
     default:

@@ -4,6 +4,7 @@ A self-contained Bun dashboard for local Claude + Codex + OpenCode session statu
 
 ## What it shows
 - `Working`
+- `Background + Working`
 - `Waiting for answer`
 - `Idling`
 - Hide/unhide windows (auto-unhide on fresh activity)

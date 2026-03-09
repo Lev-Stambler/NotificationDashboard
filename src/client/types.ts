@@ -1,4 +1,4 @@
-export type AgentStatus = "idling" | "waiting" | "working";
+export type AgentStatus = "idling" | "waiting" | "background" | "working";
 export type AgentSource = "claude" | "codex" | "opencode";
 
 export interface AgentSession {

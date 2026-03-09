@@ -15,7 +15,7 @@ const countByStatus = (sessions: AgentSession[]) => {
       acc[session.status] += 1;
       return acc;
     },
-    { idling: 0, waiting: 0, working: 0 }
+    { idling: 0, waiting: 0, background: 0, working: 0 }
   );
 };
 
@@ -113,6 +113,10 @@ export default function App() {
         <article>
           <h2>Working</h2>
           <p>{counts.working}</p>
+        </article>
+        <article>
+          <h2>Background + Working</h2>
+          <p>{counts.background}</p>
         </article>
         <article>
           <h2>Waiting</h2>

@@ -1,0 +1,9 @@
+{
+  "source": "claude",
+  "hook_event_name": "Notification",
+  "session_id": "fixture-unhandled",
+  "cwd": "/tmp/fixture-unhandled",
+  "notification_type": "background_run_started",
+  "message": "Background worker started",
+  "title": "Claude notification"
+}

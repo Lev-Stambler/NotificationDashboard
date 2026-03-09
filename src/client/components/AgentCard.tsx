@@ -2,6 +2,7 @@ import type { AgentSession } from "../types";
 
 const statusLabel = (status: AgentSession["status"]): string => {
   if (status === "working") return "Working";
+  if (status === "background") return "Background + Working";
   if (status === "waiting") return "Waiting for answer";
   return "Idling";
 };

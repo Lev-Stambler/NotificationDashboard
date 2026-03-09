@@ -1,4 +1,4 @@
-export type AgentStatus = "idling" | "waiting" | "working";
+export type AgentStatus = "idling" | "waiting" | "background" | "working";
 export type AgentSource = "claude" | "codex" | "opencode";
 
 export interface HookPayload {
@@ -8,6 +8,9 @@ export interface HookPayload {
   cwd?: string;
   hook_sent_at?: number;
   claude_pid?: number;
+  notification_type?: string;
+  message?: string;
+  title?: string;
   type?: string;
   codex_event?: string;
   "thread-id"?: string;
@@ -28,6 +31,16 @@ export interface AgentSession {
   pid: number | null;
   endedAt: number | null;
   lastTurnCompleteAt: number | null;
+}
+
+export interface ClaudeNotificationDebugEntry {
+  observedAt: number;
+  sessionId: string | null;
+  agentKey: string;
+  notificationType: string | null;
+  message: string | null;
+  title: string | null;
+  classification: string;
 }
 
 export interface DashboardSnapshot {
