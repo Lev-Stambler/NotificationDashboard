@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { sortSessionsForDisplay } from "../shared/session-order";
 import { AgentCard } from "./components/AgentCard";
 import { RenameModal } from "./components/RenameModal";
 import type { AgentSession, WsMessage } from "./types";
@@ -6,7 +7,7 @@ import type { AgentSession, WsMessage } from "./types";
 const mergeSession = (sessions: AgentSession[], incoming: AgentSession): AgentSession[] => {
   const next = new Map(sessions.map((session) => [session.agentKey, session]));
   next.set(incoming.agentKey, incoming);
-  return [...next.values()].sort((a, b) => b.lastActivityAt - a.lastActivityAt);
+  return sortSessionsForDisplay([...next.values()]);
 };
 
 const countByStatus = (sessions: AgentSession[]) => {
@@ -34,7 +35,7 @@ export default function App() {
         hiddenSessions: AgentSession[];
       };
       if (!cancelled) {
-        setSessions([...payload.sessions, ...payload.hiddenSessions]);
+        setSessions(sortSessionsForDisplay([...payload.sessions, ...payload.hiddenSessions]));
       }
     };
 
@@ -49,7 +50,7 @@ export default function App() {
     socket.onmessage = (event) => {
       const message = JSON.parse(event.data) as WsMessage;
       if (message.type === "snapshot") {
-        setSessions([...message.payload.sessions, ...message.payload.hiddenSessions]);
+        setSessions(sortSessionsForDisplay([...message.payload.sessions, ...message.payload.hiddenSessions]));
         return;
       }
       if (message.type === "session_upsert") {

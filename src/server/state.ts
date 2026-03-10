@@ -1,3 +1,4 @@
+import { nextSortActivityAt, sortSessionsForDisplay } from "../shared/session-order";
 import { RECENT_TTL_MS, SETTINGS, STALE_SESSION_MS } from "./config";
 import {
   buildAgentKey,
@@ -43,6 +44,8 @@ export class DashboardState {
 
     for (const session of initialRecent) {
       const isHidden = this.hidden.has(session.agentKey) || session.hidden === true;
+      const sortActivityAt =
+        typeof session.sortActivityAt === "number" ? session.sortActivityAt : session.lastActivityAt;
       if (isHidden) {
         this.hidden.add(session.agentKey);
       }
@@ -50,7 +53,8 @@ export class DashboardState {
       this.sessions.set(session.agentKey, {
         ...session,
         hidden: isHidden,
-        customName: this.names.get(session.agentKey) ?? session.customName ?? null
+        customName: this.names.get(session.agentKey) ?? session.customName ?? null,
+        sortActivityAt
       });
       if (session.sessionId) {
         this.sessionToAgent.set(`${session.source}:${session.sessionId}`, session.agentKey);
@@ -112,16 +116,21 @@ export class DashboardState {
     return now - session.endedAt <= RECENT_TTL_MS;
   }
 
+  private assignStatus(session: AgentSession, nextStatus: AgentStatus, timestamp: number): void {
+    session.sortActivityAt = nextSortActivityAt(session, nextStatus, timestamp);
+    session.status = nextStatus;
+  }
+
   visibleSessions(now = Date.now()): AgentSession[] {
-    return [...this.sessions.values()]
-      .filter((session) => this.isDisplayable(session, now) && !session.hidden)
-      .sort((a, b) => b.lastActivityAt - a.lastActivityAt);
+    return sortSessionsForDisplay(
+      [...this.sessions.values()].filter((session) => this.isDisplayable(session, now) && !session.hidden)
+    );
   }
 
   hiddenSessions(now = Date.now()): AgentSession[] {
-    return [...this.sessions.values()]
-      .filter((session) => this.isDisplayable(session, now) && session.hidden)
-      .sort((a, b) => b.lastActivityAt - a.lastActivityAt);
+    return sortSessionsForDisplay(
+      [...this.sessions.values()].filter((session) => this.isDisplayable(session, now) && session.hidden)
+    );
   }
 
   rename(agentKey: string, name: string | null): AgentSession | null {
@@ -192,6 +201,7 @@ export class DashboardState {
           status: "idling",
           lastEvent: "initialized",
           lastActivityAt: now,
+          sortActivityAt: now,
           pid: null,
           endedAt: null,
           lastTurnCompleteAt: null
@@ -235,7 +245,7 @@ export class DashboardState {
     }
 
     const mapped = eventToStatus(source, hookEventName, eventTimestamp, base.status, payload);
-    base.status = mapped.status;
+    this.assignStatus(base, mapped.status, eventTimestamp);
     if (source === "claude" && hookEventName === "Notification") {
       const notificationKind = classifyClaudeNotification(payload);
       if (notificationKind === "background_active") {
@@ -279,9 +289,11 @@ export class DashboardState {
     const session = this.sessions.get(key);
     if (!session) return null;
 
-    session.status = "working";
+    const activityAt = entry.ts ? entry.ts * 1000 : Date.now();
+
+    this.assignStatus(session, "working", activityAt);
     session.lastEvent = "history_prompt";
-    session.lastActivityAt = entry.ts ? entry.ts * 1000 : Date.now();
+    session.lastActivityAt = activityAt;
     session.endedAt = null;
     if (session.hidden) {
       session.hidden = false;
@@ -327,6 +339,7 @@ export class DashboardState {
           status: "idling",
           lastEvent: "initialized",
           lastActivityAt: input.updatedAtMs,
+          sortActivityAt: input.updatedAtMs,
           pid: null,
           endedAt: null,
           lastTurnCompleteAt: null
@@ -337,7 +350,7 @@ export class DashboardState {
     }
 
     base.sessionId = input.sessionId;
-    base.status = input.status;
+    this.assignStatus(base, input.status, input.updatedAtMs);
     base.lastEvent = input.lastEvent;
     base.lastActivityAt = input.updatedAtMs;
     base.endedAt = input.status === "idling" ? base.endedAt : null;
@@ -355,6 +368,7 @@ export class DashboardState {
       existing.status === base.status &&
       existing.lastEvent === base.lastEvent &&
       existing.lastActivityAt === base.lastActivityAt &&
+      existing.sortActivityAt === base.sortActivityAt &&
       existing.hidden === base.hidden &&
       existing.projectPath === base.projectPath
     ) {
@@ -458,7 +472,7 @@ export class DashboardState {
       const elapsed = now - session.lastActivityAt;
 
       if (session.status === "waiting" && elapsed > SETTINGS.waitingToIdleMs) {
-        session.status = "idling";
+        this.assignStatus(session, "idling", now);
         session.lastEvent = "waiting_timeout";
         dirty = true;
       }
@@ -467,13 +481,13 @@ export class DashboardState {
         session.source === "claude" && session.status === "background" && pidAlive;
 
       if (session.status === "background" && elapsed > SETTINGS.backgroundToIdleMs && !skipBackgroundTimeout) {
-        session.status = "idling";
+        this.assignStatus(session, "idling", now);
         session.lastEvent = "background_timeout";
         dirty = true;
       }
 
       if (session.status === "working" && elapsed > SETTINGS.workingToIdleMs) {
-        session.status = "idling";
+        this.assignStatus(session, "idling", now);
         session.lastEvent = "working_timeout";
         dirty = true;
       }

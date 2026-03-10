@@ -6,6 +6,7 @@
   --text-dim: #9eb7cb;
   --line: rgba(117, 173, 214, 0.25);
   --working: #26d97a;
+  --background: #58e39a;
   --waiting: #ffb347;
   --idling: #5fb4ff;
 }
@@ -124,6 +125,10 @@ body {
   color: var(--working);
 }
 
+.status-background .status-light {
+  color: var(--background);
+}
+
 .status-waiting .status-light {
   color: var(--waiting);
 }
@@ -162,6 +167,10 @@ body {
 
 .badge.status-working {
   border-color: rgba(38, 217, 122, 0.45);
+}
+
+.badge.status-background {
+  border-color: rgba(88, 227, 154, 0.45);
 }
 
 .badge.status-waiting {

@@ -29,6 +29,7 @@ export interface AgentSession {
   status: AgentStatus;
   lastEvent: string;
   lastActivityAt: number;
+  sortActivityAt: number;
   pid: number | null;
   endedAt: number | null;
   lastTurnCompleteAt: number | null;
