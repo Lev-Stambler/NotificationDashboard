@@ -71,10 +71,11 @@ describe("status-mapper", () => {
         notification_type: "elicitation_dialog"
       }).status
     ).toBe("waiting");
+    expect(eventToStatus("claude", "Stop", Date.now(), "working").status).toBe("idling");
     expect(eventToStatus("claude", "SessionEnd", Date.now(), "working").endedAt).not.toBeNull();
     expect(eventToStatus("codex", "agent-turn-complete", Date.now(), "working").status).toBe("waiting");
     expect(eventToStatus("opencode", "assistant_in_progress", Date.now(), "idling").status).toBe("working");
-    expect(eventToStatus("opencode", "assistant_complete", Date.now(), "working").status).toBe("waiting");
+    expect(eventToStatus("opencode", "assistant_complete", Date.now(), "working").status).toBe("idling");
   });
 
   test("resolves session IDs from codex and claude payloads", () => {

@@ -18,6 +18,7 @@ export const DEFAULT_QUEUE_FILE =
 export const CODEX_HISTORY_FILE = join(homedir(), ".codex", "history.jsonl");
 export const CODEX_STATE_DB_FILE = join(homedir(), ".codex", "state_5.sqlite");
 export const OPENCODE_DB_FILE = join(homedir(), ".local", "share", "opencode", "opencode.db");
+export const CLAUDE_PROJECTS_DIR = join(homedir(), ".claude", "projects");
 
 export const NAMES_FILE = join(DEFAULT_CONFIG_DIR, "names.json");
 export const CACHE_FILE = join(DEFAULT_CONFIG_DIR, "state-cache.json");
@@ -30,6 +31,7 @@ export const SETTINGS: DashboardSettings = {
   recentTtlMinutes: envNum("DASH_RECENT_TTL_MINUTES", 30),
   staleDays: envNum("DASH_STALE_DAYS", 2),
   waitingToIdleMs: envNum("DASH_WAITING_TO_IDLE_MS", 120_000),
+  backgroundToIdleMs: envNum("DASH_BACKGROUND_TO_IDLE_MS", 1_800_000),
   workingToIdleMs: envNum("DASH_WORKING_TO_IDLE_MS", 180_000)
 };
 

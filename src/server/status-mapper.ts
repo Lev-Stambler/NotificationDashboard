@@ -112,7 +112,7 @@ export const eventToStatus = (
       return { status: "working", endedAt: null };
     }
     if (hookEventName === "assistant_complete") {
-      return { status: "waiting", endedAt: null };
+      return { status: "idling", endedAt: null };
     }
     return { status: currentStatus, endedAt: null };
   }
@@ -126,8 +126,9 @@ export const eventToStatus = (
     case "PostToolUseFailure":
       return { status: "working", endedAt: null };
     case "PermissionRequest":
-    case "Stop":
       return { status: "waiting", endedAt: null };
+    case "Stop":
+      return { status: "idling", endedAt: null };
     case "Notification":
       if (payload) {
         const notificationKind = classifyClaudeNotification(payload);

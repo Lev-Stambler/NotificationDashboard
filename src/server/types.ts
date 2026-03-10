@@ -6,6 +6,7 @@ export interface HookPayload {
   hook_event_name?: string;
   session_id?: string;
   cwd?: string;
+  transcript_path?: string;
   hook_sent_at?: number;
   claude_pid?: number;
   notification_type?: string;
@@ -56,6 +57,7 @@ export interface DashboardSettings {
   recentTtlMinutes: number;
   staleDays: number;
   waitingToIdleMs: number;
+  backgroundToIdleMs: number;
   workingToIdleMs: number;
 }
 

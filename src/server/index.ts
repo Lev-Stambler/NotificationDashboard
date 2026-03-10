@@ -1,9 +1,16 @@
-import { mkdir, open, stat } from "node:fs/promises";
-import { dirname } from "node:path";
+import { mkdir, open, readdir, stat } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { Database } from "bun:sqlite";
 import { Hono } from "hono";
 import {
+  resolveLatestClaudeTranscriptActivity,
+  resolveOpenCodeActivity,
+  sessionIdFromTranscriptPath,
+  type OpenCodeSessionRow
+} from "./activity-resolver";
+import {
   CACHE_FILE,
+  CLAUDE_PROJECTS_DIR,
   CODEX_HISTORY_FILE,
   CODEX_STATE_DB_FILE,
   HIDDEN_FILE,
@@ -31,7 +38,18 @@ const send = (message: WsMessage): void => {
   }
 };
 
+const claudeTranscriptPaths = new Map<string, string>();
+
+const trackClaudeTranscriptPath = (payload: HookPayload): void => {
+  if (payload.source !== "claude") return;
+  if (typeof payload.session_id !== "string" || payload.session_id.length === 0) return;
+  if (typeof payload.transcript_path !== "string" || payload.transcript_path.length === 0) return;
+
+  claudeTranscriptPaths.set(payload.session_id, payload.transcript_path);
+};
+
 const upsertSession = (payload: HookPayload, now?: number): void => {
+  trackClaudeTranscriptPath(payload);
   const session = stateStore.applyHook(payload, now);
   if (!session) return;
 
@@ -65,74 +83,6 @@ interface CodexThreadRow {
   cwd: string;
   updated_at: number;
 }
-
-interface OpenCodeSessionRow {
-  id: string;
-  directory: string;
-  time_updated: number;
-  latest_data: string | null;
-}
-
-const numberOrNull = (value: unknown): number | null => {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-};
-
-const resolveOpenCodeActivity = (row: OpenCodeSessionRow): {
-  status: AgentStatus;
-  lastEvent: string;
-  updatedAtMs: number;
-  cwd: string | null;
-} => {
-  let status: AgentStatus = "idling";
-  let lastEvent = "session_activity";
-  let updatedAtMs = row.time_updated;
-  let cwd: string | null = row.directory || null;
-
-  if (!row.latest_data) {
-    return { status, lastEvent, updatedAtMs, cwd };
-  }
-
-  const parsed = safeJson(row.latest_data);
-  if (!parsed || typeof parsed !== "object") {
-    return { status, lastEvent, updatedAtMs, cwd };
-  }
-
-  const payload = parsed as Record<string, unknown>;
-  const role = typeof payload.role === "string" ? payload.role : null;
-
-  const path = payload.path;
-  if (path && typeof path === "object") {
-    const candidate = (path as Record<string, unknown>).cwd;
-    if (typeof candidate === "string" && candidate.trim().length > 0) {
-      cwd = candidate;
-    }
-  }
-
-  const time = payload.time;
-  if (time && typeof time === "object") {
-    const timeRecord = time as Record<string, unknown>;
-    const created = numberOrNull(timeRecord.created);
-    const completed = numberOrNull(timeRecord.completed);
-
-    if (created !== null && created > updatedAtMs) updatedAtMs = created;
-    if (completed !== null && completed > updatedAtMs) updatedAtMs = completed;
-
-    if (role === "assistant") {
-      if (completed === null) {
-        status = "working";
-        lastEvent = "assistant_in_progress";
-      } else {
-        status = "waiting";
-        lastEvent = "assistant_complete";
-      }
-    } else if (role === "user") {
-      status = "working";
-      lastEvent = "user_message";
-    }
-  }
-
-  return { status, lastEvent, updatedAtMs, cwd };
-};
 
 await mkdir(SETTINGS.configDir, { recursive: true });
 await mkdir(dirname(SETTINGS.queueFile), { recursive: true });
@@ -188,7 +138,7 @@ let historyRemainder = "";
 let codexDb: Database | null = null;
 let codexThreadUpdatedAt = 0;
 let openCodeDb: Database | null = null;
-let openCodeSessionUpdatedAt = 0;
+const claudeTranscriptMtime = new Map<string, number>();
 
 const bootHistory = async (): Promise<void> => {
   try {
@@ -233,6 +183,109 @@ const readHistory = async (): Promise<void> => {
     }
   } finally {
     await handle.close();
+  }
+};
+
+const readClaudeTranscriptTail = async (filePath: string): Promise<string[]> => {
+  const info = await stat(filePath);
+  const handle = await open(filePath, "r");
+  try {
+    const maxBytes = 128 * 1024;
+    const start = Math.max(0, info.size - maxBytes);
+    const length = info.size - start;
+    const buffer = Buffer.alloc(length);
+    const { bytesRead } = await handle.read(buffer, 0, length, start);
+    return buffer
+      .subarray(0, bytesRead)
+      .toString("utf8")
+      .split("\n")
+      .filter((line) => line.trim().length > 0);
+  } finally {
+    await handle.close();
+  }
+};
+
+const listClaudeTranscriptFiles = async (): Promise<string[]> => {
+  if (!(await Bun.file(CLAUDE_PROJECTS_DIR).exists())) return [];
+
+  const projectEntries = await readdir(CLAUDE_PROJECTS_DIR, { withFileTypes: true });
+  const files: string[] = [];
+
+  for (const projectEntry of projectEntries) {
+    if (!projectEntry.isDirectory()) continue;
+    const projectDir = join(CLAUDE_PROJECTS_DIR, projectEntry.name);
+    const sessionEntries = await readdir(projectDir, { withFileTypes: true });
+    for (const sessionEntry of sessionEntries) {
+      if (!sessionEntry.isFile() || !sessionEntry.name.endsWith(".jsonl")) continue;
+      files.push(join(projectDir, sessionEntry.name));
+    }
+  }
+
+  return files;
+};
+
+const ingestClaudeTranscript = async (filePath: string, force = false): Promise<boolean> => {
+  const sessionId = sessionIdFromTranscriptPath(filePath);
+  if (!sessionId) return false;
+  let info;
+  try {
+    info = await stat(filePath);
+  } catch {
+    claudeTranscriptPaths.delete(sessionId);
+    claudeTranscriptMtime.delete(sessionId);
+    return false;
+  }
+  if (!force && (claudeTranscriptMtime.get(sessionId) ?? 0) >= info.mtimeMs) return false;
+
+  claudeTranscriptPaths.set(sessionId, filePath);
+
+  let lines: string[];
+  try {
+    lines = await readClaudeTranscriptTail(filePath);
+  } catch {
+    claudeTranscriptPaths.delete(sessionId);
+    claudeTranscriptMtime.delete(sessionId);
+    return false;
+  }
+  const activity = resolveLatestClaudeTranscriptActivity(lines, info.mtimeMs);
+  claudeTranscriptMtime.set(sessionId, info.mtimeMs);
+
+  if (!activity) {
+    return false;
+  }
+
+  const updated = stateStore.applyClaudeTranscriptActivity(activity);
+  if (updated) {
+    send({ type: "session_upsert", payload: updated });
+    return true;
+  }
+
+  return false;
+};
+
+const bootClaudeTranscripts = async (): Promise<void> => {
+  const files = await listClaudeTranscriptFiles();
+  const datedFiles = await Promise.all(
+    files.map(async (filePath) => ({ filePath, updatedAtMs: (await stat(filePath)).mtimeMs }))
+  );
+
+  datedFiles.sort((a, b) => a.updatedAtMs - b.updatedAtMs);
+  for (const file of datedFiles) {
+    await ingestClaudeTranscript(file.filePath);
+  }
+};
+
+const refreshTrackedClaudeTranscripts = async (force = false): Promise<void> => {
+  const files = new Set<string>(claudeTranscriptPaths.values());
+  if (files.size === 0) return;
+
+  let changed = false;
+  for (const filePath of files) {
+    const ingested = await ingestClaudeTranscript(filePath, force);
+    changed = changed || ingested;
+  }
+  if (changed) {
+    queuePersist();
   }
 };
 
@@ -320,7 +373,14 @@ const bootOpenCodeSessions = async (): Promise<void> => {
           WHERE m.session_id = s.id
           ORDER BY m.time_created DESC
           LIMIT 1
-        ) AS latest_data
+        ) AS latest_data,
+        (
+          SELECT p.data
+          FROM part p
+          WHERE p.session_id = s.id
+          ORDER BY p.time_updated DESC, p.time_created DESC
+          LIMIT 1
+        ) AS latest_part_data
       FROM session s
       WHERE s.time_archived IS NULL
       ORDER BY s.time_updated DESC
@@ -339,9 +399,6 @@ const bootOpenCodeSessions = async (): Promise<void> => {
     });
     if (updated) {
       send({ type: "session_upsert", payload: updated });
-    }
-    if (row.time_updated > openCodeSessionUpdatedAt) {
-      openCodeSessionUpdatedAt = row.time_updated;
     }
   }
 };
@@ -364,18 +421,24 @@ const readOpenCodeSessions = async (): Promise<void> => {
           WHERE m.session_id = s.id
           ORDER BY m.time_created DESC
           LIMIT 1
-        ) AS latest_data
+        ) AS latest_data,
+        (
+          SELECT p.data
+          FROM part p
+          WHERE p.session_id = s.id
+          ORDER BY p.time_updated DESC, p.time_created DESC
+          LIMIT 1
+        ) AS latest_part_data
       FROM session s
       WHERE s.time_archived IS NULL
-        AND s.time_updated > ?
-      ORDER BY s.time_updated ASC
-      LIMIT 300`
+      ORDER BY s.time_updated DESC
+      LIMIT 150`
     )
-    .all(openCodeSessionUpdatedAt) as OpenCodeSessionRow[];
+    .all() as OpenCodeSessionRow[];
 
   let changed = false;
 
-  for (const row of rows) {
+  for (const row of [...rows].reverse()) {
     const activity = resolveOpenCodeActivity(row);
     const updated = stateStore.applyOpenCodeActivity({
       sessionId: row.id,
@@ -387,9 +450,6 @@ const readOpenCodeSessions = async (): Promise<void> => {
     if (updated) {
       changed = true;
       send({ type: "session_upsert", payload: updated });
-    }
-    if (row.time_updated > openCodeSessionUpdatedAt) {
-      openCodeSessionUpdatedAt = row.time_updated;
     }
   }
 
@@ -420,7 +480,8 @@ const serveFile = async (path: string): Promise<Response> => {
   });
 };
 
-app.get("/api/sessions", (c) => {
+app.get("/api/sessions", async (c) => {
+  await refreshTrackedClaudeTranscripts();
   return c.json({
     sessions: stateStore.visibleSessions(),
     hiddenSessions: stateStore.hiddenSessions()
@@ -488,6 +549,8 @@ app.get("/", async () => {
 await bootQueue();
 await readQueue();
 await bootHistory();
+await bootClaudeTranscripts();
+await refreshTrackedClaudeTranscripts(true);
 await bootCodexThreads();
 await bootOpenCodeSessions();
 
@@ -500,6 +563,10 @@ setInterval(() => {
 }, 750);
 
 setInterval(() => {
+  void refreshTrackedClaudeTranscripts();
+}, 1_000);
+
+setInterval(() => {
   void readCodexThreads();
 }, 1_000);
 
@@ -508,16 +575,20 @@ setInterval(() => {
 }, 1_000);
 
 setInterval(() => {
-  const result = stateStore.tick();
-  for (const updated of result.updated) {
-    send({ type: "session_upsert", payload: updated });
-  }
-  for (const removed of result.removed) {
-    send({ type: "session_remove", payload: { agentKey: removed } });
-  }
-  if (result.updated.length > 0 || result.removed.length > 0) {
-    queuePersist();
-  }
+  void (async () => {
+    await refreshTrackedClaudeTranscripts();
+
+    const result = stateStore.tick();
+    for (const updated of result.updated) {
+      send({ type: "session_upsert", payload: updated });
+    }
+    for (const removed of result.removed) {
+      send({ type: "session_remove", payload: { agentKey: removed } });
+    }
+    if (result.updated.length > 0 || result.removed.length > 0) {
+      queuePersist();
+    }
+  })();
 }, 5_000);
 
 const server = Bun.serve({
@@ -535,16 +606,19 @@ const server = Bun.serve({
   websocket: {
     open(ws) {
       sockets.add(ws);
-      ws.send(
-        JSON.stringify({
-          type: "snapshot",
-          payload: {
-            sessions: stateStore.visibleSessions(),
-            hiddenSessions: stateStore.hiddenSessions(),
-            generatedAt: Date.now()
-          }
-        } satisfies WsMessage)
-      );
+      void (async () => {
+        await refreshTrackedClaudeTranscripts();
+        ws.send(
+          JSON.stringify({
+            type: "snapshot",
+            payload: {
+              sessions: stateStore.visibleSessions(),
+              hiddenSessions: stateStore.hiddenSessions(),
+              generatedAt: Date.now()
+            }
+          } satisfies WsMessage)
+        );
+      })();
     },
     close(ws) {
       sockets.delete(ws);

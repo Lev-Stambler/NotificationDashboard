@@ -37,12 +37,12 @@ describe("DashboardState", () => {
     expect(session?.lastEvent).toBe("thread_activity");
   });
 
-  test("tracks opencode assistant completion as waiting", () => {
+  test("tracks opencode assistant completion as idle", () => {
     const state = new DashboardState({}, []);
     const session = state.applyOpenCodeActivity({
       sessionId: "oc-1",
       cwd: "/tmp/open-code-project",
-      status: "waiting",
+      status: "idling",
       lastEvent: "assistant_complete",
       updatedAtMs: 1_700_000_000_500
     });
@@ -50,7 +50,7 @@ describe("DashboardState", () => {
     expect(session).not.toBeNull();
     expect(session?.source).toBe("opencode");
     expect(session?.sessionId).toBe("oc-1");
-    expect(session?.status).toBe("waiting");
+    expect(session?.status).toBe("idling");
     expect(session?.lastEvent).toBe("assistant_complete");
   });
 
@@ -196,7 +196,7 @@ describe("DashboardState", () => {
     expect(visible[0]?.lastEvent).toBe("notification_background");
   });
 
-  test("idles background notifications when pid is dead", () => {
+  test("does not immediately idle background notifications when pid is dead", () => {
     const state = new DashboardState({}, []);
     const start = 30_000;
 
@@ -214,8 +214,35 @@ describe("DashboardState", () => {
 
     const tickResult = state.tick(start + 100);
     expect(tickResult.updated).toHaveLength(1);
-    expect(tickResult.updated[0]?.status).toBe("idling");
-    expect(tickResult.updated[0]?.lastEvent).toBe("pid_dead");
+    expect(tickResult.updated[0]?.status).toBe("background");
+    expect(tickResult.updated[0]?.pid).toBeNull();
+    expect(tickResult.updated[0]?.lastEvent).toBe("notification_background");
+  });
+
+  test("background notifications time out on the background timeout window", () => {
+    const state = new DashboardState({}, []);
+    const start = 35_000;
+
+    state.applyHook(
+      {
+        source: "claude",
+        hook_event_name: "Notification",
+        session_id: "s-background-timeout",
+        cwd: "/tmp/background-timeout",
+        message: "Claude is running in the background",
+        claude_pid: 999_999
+      },
+      start
+    );
+
+    const beforeTimeout = state.tick(start + SETTINGS.backgroundToIdleMs - 1_000);
+    expect(beforeTimeout.updated).toHaveLength(1);
+    expect(beforeTimeout.updated[0]?.status).toBe("background");
+
+    const atTimeout = state.tick(start + SETTINGS.backgroundToIdleMs + 10);
+    expect(atTimeout.updated).toHaveLength(1);
+    expect(atTimeout.updated[0]?.status).toBe("idling");
+    expect(atTimeout.updated[0]?.lastEvent).toBe("background_timeout");
   });
 
   test("treats permission prompt notifications as waiting", () => {

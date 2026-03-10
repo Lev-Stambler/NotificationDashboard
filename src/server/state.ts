@@ -310,6 +310,10 @@ export class DashboardState {
     const agentKey = buildAgentKey(input.source, projectPath);
     const existing = this.sessions.get(agentKey);
 
+    if (existing && input.updatedAtMs < existing.lastActivityAt) {
+      return { ...existing };
+    }
+
     const base: AgentSession = existing
       ? { ...existing }
       : {
@@ -345,6 +349,18 @@ export class DashboardState {
       base.lastTurnCompleteAt = input.updatedAtMs;
     }
 
+    if (
+      existing &&
+      existing.sessionId === base.sessionId &&
+      existing.status === base.status &&
+      existing.lastEvent === base.lastEvent &&
+      existing.lastActivityAt === base.lastActivityAt &&
+      existing.hidden === base.hidden &&
+      existing.projectPath === base.projectPath
+    ) {
+      return null;
+    }
+
     this.sessionToAgent.set(`${input.source}:${input.sessionId}`, agentKey);
     this.sessions.set(agentKey, base);
     return { ...base };
@@ -374,6 +390,23 @@ export class DashboardState {
   }): AgentSession | null {
     return this.applyExternalActivity({
       source: "opencode",
+      sessionId: input.sessionId,
+      cwd: input.cwd,
+      status: input.status,
+      lastEvent: input.lastEvent,
+      updatedAtMs: input.updatedAtMs
+    });
+  }
+
+  applyClaudeTranscriptActivity(input: {
+    sessionId: string;
+    cwd: string | null;
+    status: AgentStatus;
+    lastEvent: string;
+    updatedAtMs: number;
+  }): AgentSession | null {
+    return this.applyExternalActivity({
+      source: "claude",
       sessionId: input.sessionId,
       cwd: input.cwd,
       status: input.status,
@@ -418,10 +451,6 @@ export class DashboardState {
           pidAlive = true;
         } catch {
           session.pid = null;
-          session.endedAt = session.endedAt ?? now;
-          session.status = "idling";
-          session.lastEvent = "pid_dead";
-          session.lastActivityAt = now;
           dirty = true;
         }
       }
@@ -437,7 +466,7 @@ export class DashboardState {
       const skipBackgroundTimeout =
         session.source === "claude" && session.status === "background" && pidAlive;
 
-      if (session.status === "background" && elapsed > SETTINGS.workingToIdleMs && !skipBackgroundTimeout) {
+      if (session.status === "background" && elapsed > SETTINGS.backgroundToIdleMs && !skipBackgroundTimeout) {
         session.status = "idling";
         session.lastEvent = "background_timeout";
         dirty = true;
