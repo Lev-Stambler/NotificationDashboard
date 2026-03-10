@@ -463,6 +463,9 @@ const contentType = (path: string): string => {
   if (path.endsWith(".css")) return "text/css; charset=utf-8";
   if (path.endsWith(".html")) return "text/html; charset=utf-8";
   if (path.endsWith(".json")) return "application/json; charset=utf-8";
+  if (path.endsWith(".svg")) return "image/svg+xml";
+  if (path.endsWith(".png")) return "image/png";
+  if (path.endsWith(".ico")) return "image/x-icon";
   return "text/plain; charset=utf-8";
 };
 
@@ -535,6 +538,18 @@ app.get("/api/debug/notifications", (c) => {
 
 app.get("/styles.css", async () => {
   return serveFile("public/styles.css");
+});
+
+app.get("/favicon.svg", async () => {
+  return serveFile("public/favicon.svg");
+});
+
+app.get("/favicon.png", async () => {
+  return serveFile("public/favicon.png");
+});
+
+app.get("/favicon.ico", async () => {
+  return serveFile("public/favicon.ico");
 });
 
 app.get("/assets/*", async (c) => {
